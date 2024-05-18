@@ -3,6 +3,7 @@ package apiclient
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,14 +33,14 @@ var tr = &http.Transport{
 }
 
 // NewHTTPClient 创建一个新的HTTP客户端实例，并通过用户名和密码进行认证获取Bearer Token
-func NewHTTPClient(baseURL, authURL, username, password string) (ClientInterface, error) {
+func NewHTTPClient(baseURL, authPath, username, password string) (ClientInterface, error) {
 	client := &http.Client{
 		Timeout:   10 * time.Second,
 		Transport: tr,
 	}
 
 	// 进行认证获取Bearer Token
-	token, err := authenticate(client, authURL, username, password)
+	token, err := authenticate(client, baseURL+authPath, username, password, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -52,21 +53,22 @@ func NewHTTPClient(baseURL, authURL, username, password string) (ClientInterface
 }
 
 // authenticate 用于通过用户名和密码进行认证，并获取Bearer Token
-func authenticate(client *http.Client, authURL, username, password string) (string, error) {
-	authData := map[string]string{
-		"username": username,
-		"password": password,
-	}
-	jsonData, err := json.Marshal(authData)
-	if err != nil {
-		return "", fmt.Errorf("创建认证请求数据失败: %w", err)
+func authenticate(client *http.Client, authURL, username, password string, header map[string]string, data map[string]string) (string, error) {
+
+	dataReq := url.Values{}
+	for k, v := range data {
+		dataReq.Add(k, v)
 	}
 
-	req, err := http.NewRequest("POST", authURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", authURL, bytes.NewBufferString(dataReq.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("创建认证请求失败: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Basic "+basicAuth(username, password))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -94,6 +96,12 @@ func authenticate(client *http.Client, authURL, username, password string) (stri
 	}
 
 	return token, nil
+}
+
+// basicAuth 函数用于进行Basic认证的Base64编码
+func basicAuth(username, password string) string {
+	auth := username + ":" + password
+	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
 // doRequest 发送HTTP请求并将响应解析为指定的数据结构
