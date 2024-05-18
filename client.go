@@ -1,4 +1,4 @@
-package aipclient
+package apiclient
 
 import (
 	"bytes"
